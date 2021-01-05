@@ -1,0 +1,5 @@
+CREATE (Normal:Skintype{name:"Normal"})
+CREATE (Oily:Skintype{name:"Oily"})
+CREATE (Combination:Skintype{name:"Combination"})
+CREATE (Dry:Skintype{name:"Dry"})
+CREATE (Sensitive:Skintype{name:"Sensitive"})
