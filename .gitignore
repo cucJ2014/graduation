@@ -1,0 +1,5 @@
+test.py
+./classifier_multi_label_textcnn/model
+./classifier_multi_label_textcnn/logdir
+./classifier_multi_label_textcnn/image
+./classifier_multi_label_textcnn/model/saved_01
