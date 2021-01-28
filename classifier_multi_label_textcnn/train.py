@@ -100,7 +100,9 @@ with sess.as_default():
             time_now_string(), str(i), str(j), str(num_batchs), str(loss), str(accuracy)))
     print('Train finished')
 
-path_save_loss = 'plot_data.csv'
+import time
+now = time.strftime("%Y-%m-%d-%H_%M",time.localtime(time.time()))
+path_save_loss = 'plot_data'+now+'.csv'
 create_csv(path_save_loss,loss_list,acc_list)
 
 
