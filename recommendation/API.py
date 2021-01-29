@@ -230,17 +230,187 @@ def user_input():
 
 
 
+
+
+graph = Graph("bolt://localhost:7687/neo4j", username="neo4j", password='123456')
+matcher = NodeMatcher(graph)
+matcher_relationship = RelationshipMatcher(graph)
+
+
+# 按照价格、种类、肤质，在每个种类中，筛选出符合用户预期的产品
+# 返回值：result = {"name":price}
+# def search_single(single,single_price,skin_type):
+#     up_price = single_price+5
+#     down_price = single_price-5
+#     single_list_1 = list(matcher.match(single).where("_.price <= "+str(up_price)).order_by("_.price"))
+#     single_list_2 = list(matcher.match(single).where("_.price >= "+str(down_price)).order_by("_.price"))
+#     # single_list = list(matcher.match(single, price__gt=1))
+#                        # and("_.price >= "+str(down_price)))
+#     single_list = list(set(single_list_1) & set(single_list_2))
+#     # for i in single_list:
+#     #     print(i["price"],i["name"])
+#     print("筛选之前的长度： ", len(single_list))
+#
+#     result = {}
+#     if single_list:
+#         for i in single_list:
+#             findnode = matcher.match(single,name=i["name"]).first()
+#             findskintype = matcher.match("Skintype", name=skin_type).first()
+#             a = list(graph.match((findnode,findskintype), r_type='suitsfor'))
+#             if a:
+#                 result[i["name"]] = i["price"]
+#                 # print(i["price"], i["name"])
+#         print("筛选之后的长度： ",len(result))
+#
+#         # 检测是否有环，推理是否存在不合理的场景
+#         b = list(graph.run('match (a:'+ single + ')-[r:hasIngredient]->(x)<-[rr:`in conflict with`]-(b:Skintype{name:"'+
+#                       skin_type+'"})<-[rrr:suitsfor]-(a) return a.name'))
+#         if b:
+#             for i in b:
+#                 if i["a.name"] in result:
+#                     del result[(i["a.name"])]
+#         print("二次筛选之后的长度： ",len(result))
+#         # for i in result:
+#         #     print(result[i],i)
+#         return result
+#     else:
+#         return 0
+
+def search_single(single,single_price,skin_type,sensitive):
+    up_price = single_price+5
+    down_price = single_price-5
+    single_list_1 = list(matcher.match(single).where("_.price <= "+str(up_price)).order_by("_.price"))
+    single_list_2 = list(matcher.match(single).where("_.price >= "+str(down_price)).order_by("_.price"))
+    single_list = list(set(single_list_1) & set(single_list_2))
+    # for i in single_list:
+    #     print(i["price"],i["name"])
+    print("1、根据【价格、种类】筛选后的长度： ", len(single_list))  # 按价格筛选之后的结果
+
+    result = {}
+    if single_list:
+        for i in single_list:
+            findnode = matcher.match(single,name=i["name"]).first()
+            findskintype = matcher.match("Skintype", name=skin_type).first()
+            # 判断当前【节点】是否适合 当前【肤质】
+            a = list(graph.match((findnode,findskintype), r_type='suitsfor'))  # 适合其他肤质的节点
+            if a:  # 适合的话，再判断是否适合敏感肌：
+                if sensitive==1:
+                    findskintype2 = matcher.match("Skintype", name="Sensitive").first()
+                    # 判断当前【节点】是否适合【敏感肌】
+                    c = list(graph.match((findnode,findskintype2), r_type='suitsfor'))  # 适合敏感肤质的节点
+                    if c:
+                        result[i["name"]] = i["price"]
+                else:  # 如果不是敏感肌，只是其他正常肌肤，直接保存该节点。
+                    result[i["name"]] = i["price"]
+                # print(i["price"], i["name"])
+        print("2、根据【肤质】筛选后的长度： ",len(result))
+
+        if sensitive==1:
+            d = list(graph.run(
+                'match (a:' + single + ')-[r:hasIngredient]->(x)<-[rr:`in conflict with`]-(b:Skintype{name:"' +
+                'Sensitive' + '"})<-[rrr:suitsfor]-(a) return a.name'))
+            if d:
+                for i in d:
+                    if i["a.name"] in result:
+                        del result[(i["a.name"])]
+            print("3、根据【敏感肌】环路判断后的长度： ", len(result))
+
+        b = list(graph.run('match (a:'+ single + ')-[r:hasIngredient]->(x)<-[rr:`in conflict with`]-(b:Skintype{name:"'+
+                      skin_type+'"})<-[rrr:suitsfor]-(a) return a.name'))  # 检测是否有环，推理是否存在不合理的场景
+        if b:
+            for i in b:
+                if i["a.name"] in result:
+                    del result[(i["a.name"])]
+        print("3、最终：根据【肤质环路】判断后的长度： ",len(result))
+        # for i in result:
+        #     print(result[i],i)
+        return result
+    else:
+        return 0
+search_list = search_single("Toner", 36, "Oily",1)
+print(search_list)
+
+
+# 每个产品之间是否可达。
+def item2item(item1,type1,item2,type2) -> bool:
+
+    match_item2item = 'MATCH (n:Ingredients{name:"'+item1+'"}),(m:Ingredients{name:"'+item2+'"}) ' \
+                  'with n, m ' \
+                  'match (p:'+type1+')-[r:hasIngredient]->(n),(q:'+type2+')-[rr:hasIngredient]->(m) ' \
+                  'return n,m,r,rr,p,q'
+
+    match_item2item_inconflict = 'match (p:'+type1+'{name:"'+item1+'"})-[r:hasIngredient]->(n:Ingredients),' \
+                                 '(q:'+type2+'{name:"'+item2+'"})-[rr:hasIngredient]->(m:Ingredients) ' \
+                                 'with n,m,r,rr,p,q match (n)-[k:`in conflict with`]-(m) ' \
+                                 'return n,m,r,rr,p,q,k'
+
+    a = list(graph.run(match_item2item_inconflict))
+    if a:
+        return False
+    return True
+        # print(a)
+        # print(len(a))
+        # print(a[0]["n"]["chinese"])
+
+
 re_list = [1,2,3] # 洗面奶 水 霜
 re_list_name = []
 # 换成英文列表
 for i in re_list:
-    re_list_name.append(dict_type_eng[i])
+    re_list_name.append(dict_type_eng[str(i)])
 
-price_list = [100.0,250.0,150.0]
-skin_type = "Oily"
+price_list = [15.0,25.0,30.0]
+skin_type = "Sensitive"
 sensitive_BOOL = 1
 
-graph = Graph("bolt://localhost:7687/neo4j", username="neo4j", password='123456')
-matcher = NodeMatcher(graph)
+# 测试代码
+# def item2item(item1,type1,item2,type2) -> bool:
+#     if item1[0]=="洗面奶1" and item2=="水2":
+#         return False
+#     elif item1[0]=="水1" and item2=="霜1":
+#         return False
+#     return True
+# result = recall(["a","b","c"],[15,20,25],"Oily",1)
+
+
+def recall(re_list_name,price_list,skin_type,sensitive_BOOL):
+    single_list = []  # 存储每一个类别的字典，每个字典里头是name和price
+    for i in range(len(re_list_name)):  # 水、乳、霜
+        if sensitive_BOOL==1:
+            single_dict = search_single(re_list_name[i],price_list[i],"Sensitive")
+            single_list.append(single_dict)
+        else:
+            single_dict = search_single(re_list_name[i], price_list[i], skin_type)
+            single_list.append(single_dict)
+
+
+    # single_list = [{"洗面奶1":10,"洗面奶2":13},{"水1":20,"水2":22,"水3":24},{"霜1":24,"霜2":22}]
+    group = [[]]
+    new_group = [[]]
+    if len(single_list)>1:
+        count = 0
+        for d in single_list:
+            group=new_group.copy()
+            new_group=[]
+            for g in group:
+                for item in d:
+
+                    length = len(group)
+                    if length>1:
+                        type1_index=group.index(g)
+                        if(item2item(g[0],re_list_name[count],item,re_list_name[count])):
+                            new_group.append(g+[item])
+                    else:
+                        new_group.append([item])
+            count+=1
+    return new_group
+
+# result = item2item("Clarifying Lotion 4","Toner","Refreshing Cleanser","Cleanser")
+# result = recall(re_list_name,price_list,skin_type,sensitive_BOOL)
+# print(len(result))
+# print(result)
+
+
+
 
 
