@@ -4,6 +4,8 @@
 import requests
 import csv
 from py2neo import *
+import json
+
 
 
 # 将B_result数据补充到B.json
@@ -19,6 +21,12 @@ def create_csv(path,data1):
     with open(path,'a+') as f:
         csv_write = csv.writer(f)
         csv_write.writerow(data1)
+
+def read_json(file_path):
+    with open(file_path, 'r') as f:  # 读取当前目录的json文件并解码成python数据
+        data = json.load(f)
+        print(data)
+        return data
 
 
 def get_city_code(str_c):
@@ -62,6 +70,14 @@ def get_weather(city_name, city_id):
     else:
         return 0
 
+
+
+dict_skin_type = {"1":"Dry","2":"Oily","3":"Combination","4":"Normal","5":"Sensitive"}
+dict_type_eng = {"1":"Cleanser","2":"Toner","3":"Cream","4":"Serum","5":"EyeCream","6":"Sunscreen"}
+# skin_type 不包含祛痘。
+# Mositen滋润
+dict_func = {"1":"Moisturizing","2":"Whitening","3":"Anti-wrinkle","4":"Porerefining","5":"Acne","6":"Moisten"}
+
 def skintype_input():
     print("=-*-="*10)
     input_num = input("请输入肤质序号：\n"
@@ -70,7 +86,7 @@ def skintype_input():
                      "    3. 混合 \n"
                      "    4. 正常 \n")
     if int(input_num)<5 and int(input_num)>0:
-        return dict_skin_type[int(input_num)]
+        return dict_skin_type[(input_num)]
     return skintype_input()
 
 
@@ -96,7 +112,10 @@ def service_input():
 def type_re_input():
     print("=-*-="*10)
     input_list = list(map(int,input("请选择待推荐的种类序号，按逗号分割，（如 2,3,4）：：\n"
-                     "    0. 无，默认推荐 \n"
+                     "    0. 推荐方案： \n"
+                     "        方案一：1,2,6 \n"
+                     "        方案二：1,2,3,6 \n"
+                     "        方案三：1,2,3,4,5,6 \n"
                      "    1. 洗面奶 \n"
                      "    2. 护肤水 \n"
                      "    3. 乳液/面霜 \n"
@@ -192,8 +211,7 @@ dict_type["6"] = "防晒"
 # dict_match_type["5"] = "眼霜"
 # dict_match_type["6"] = "防晒"
 
-dict_skin_type = {"1":"Dry","2":"Oily","3":"Combination","4":"Normal","5":"Sensitive"}
-dict_type_eng = {"1":"Cleanser","2":"Toner","3":"Cream","4":"Serum","5":"EyeCream","6":"Sunscreen"}
+
 
 def user_input():
     skin_type = skintype_input()
@@ -205,7 +223,7 @@ def user_input():
         re_list_name = []
         # 换成英文列表
         for i in re_list:
-            re_list_name.append(dict_type_eng[i])
+            re_list_name.append(dict_type_eng[str(i)])
         city = city_input()
         function_num = function_input()
         if re_list[0]==0: # 如果包含默认推荐，那就依据所有的价格，推荐三种方案
@@ -229,7 +247,7 @@ def user_input():
         print("match_name_list : ", match_name_list)
 
 
-
+#user_input()
 
 
 graph = Graph("bolt://localhost:7687/neo4j", username="neo4j", password='123456')
@@ -327,17 +345,16 @@ def search_single(single,single_price,skin_type,sensitive):
         return result
     else:
         return 0
-search_list = search_single("Toner", 36, "Oily",1)
-print(search_list)
+# search_list = search_single("Toner", 36, "Oily",1)
+# print(search_list)
 
 
 # 每个产品之间是否可达。
 def item2item(item1,type1,item2,type2) -> bool:
-
-    match_item2item = 'MATCH (n:Ingredients{name:"'+item1+'"}),(m:Ingredients{name:"'+item2+'"}) ' \
-                  'with n, m ' \
-                  'match (p:'+type1+')-[r:hasIngredient]->(n),(q:'+type2+')-[rr:hasIngredient]->(m) ' \
-                  'return n,m,r,rr,p,q'
+    # match_item2item = 'MATCH (n:Ingredients{name:"'+item1+'"}),(m:Ingredients{name:"'+item2+'"}) ' \
+    #               'with n, m ' \
+    #               'match (p:'+type1+')-[r:hasIngredient]->(n),(q:'+type2+')-[rr:hasIngredient]->(m) ' \
+    #               'return n,m,r,rr,p,q'
 
     match_item2item_inconflict = 'match (p:'+type1+'{name:"'+item1+'"})-[r:hasIngredient]->(n:Ingredients),' \
                                  '(q:'+type2+'{name:"'+item2+'"})-[rr:hasIngredient]->(m:Ingredients) ' \
@@ -348,69 +365,211 @@ def item2item(item1,type1,item2,type2) -> bool:
     if a:
         return False
     return True
-        # print(a)
-        # print(len(a))
-        # print(a[0]["n"]["chinese"])
 
 
 re_list = [1,2,3] # 洗面奶 水 霜
+func_input_number = 4
+
 re_list_name = []
 # 换成英文列表
 for i in re_list:
     re_list_name.append(dict_type_eng[str(i)])
-
-price_list = [15.0,25.0,30.0]
+# func = dict_func[str(func_input_number)]
+func = "Whitening"
+price_list = [10.0,15.0,30.0]
 skin_type = "Sensitive"
 sensitive_BOOL = 1
 
-# 测试代码
+
+#
 # def item2item(item1,type1,item2,type2) -> bool:
-#     if item1[0]=="洗面奶1" and item2=="水2":
+#     if item1=="洗面奶1" and item2=="水2":
 #         return False
-#     elif item1[0]=="水1" and item2=="霜1":
+#     elif item1=="水1" and item2=="霜1":
 #         return False
 #     return True
-# result = recall(["a","b","c"],[15,20,25],"Oily",1)
 
+def add_function(all_list):  # 判断推荐二维列表中，是否
+    result = []
+    for i in all_list:
+        for j in range(len(i)):
+            index_type = i.index(i[j])
+            string_match = 'match (n:'+re_list_name[index_type]+\
+                           '{name:"'+i[j]+'"})-[p:hasIngredient]-(m:Ingredients) ' \
+                                          'with n,m match (m)-[k:haseffect]-(qq:Function{name:"'+func+'"}) r' \
+                                          'eturn n'
+            # print(string_match)
+            run_result = list(graph.run(string_match))
+            if run_result:
+                result.append(i)
+                break
+    print("通过功能筛选每一个列表后的长度 : ", len(result))
+    print("通过功能筛选每一个列表 : ", result)
+    return result
+
+# 测试代码
+# all_list = [['High Performance Vitamin C Facial Serum']]
+# result = add_function(all_list)
+# print(result)
 
 def recall(re_list_name,price_list,skin_type,sensitive_BOOL):
     single_list = []  # 存储每一个类别的字典，每个字典里头是name和price
     for i in range(len(re_list_name)):  # 水、乳、霜
-        if sensitive_BOOL==1:
-            single_dict = search_single(re_list_name[i],price_list[i],"Sensitive")
-            single_list.append(single_dict)
-        else:
-            single_dict = search_single(re_list_name[i], price_list[i], skin_type)
-            single_list.append(single_dict)
-
-
+        single_dict = search_single(re_list_name[i], price_list[i], skin_type, sensitive_BOOL)
+        single_list.append(single_dict)
+    print("single_list : ",single_list)
     # single_list = [{"洗面奶1":10,"洗面奶2":13},{"水1":20,"水2":22,"水3":24},{"霜1":24,"霜2":22}]
-    group = [[]]
     new_group = [[]]
-    if len(single_list)>1:
+    if len(single_list)>2:
         count = 0
         for d in single_list:
             group=new_group.copy()
             new_group=[]
             for g in group:
                 for item in d:
-
                     length = len(group)
                     if length>1:
-                        type1_index=group.index(g)
                         if(item2item(g[0],re_list_name[count],item,re_list_name[count])):
                             new_group.append(g+[item])
                     else:
-                        new_group.append([item])
+                        new_group.append(g+[item])
             count+=1
-    return new_group
+    else:
+        new_group=[]
+        for i in single_list[0]:
+            new_group.append([i])
+    print("new_group : ", new_group)
+    result = add_function(new_group)
+    return result
 
+
+# 测试代码
+# user_input()
+# result = recall(re_list_name,price_list,skin_type,sensitive_BOOL)
 # result = item2item("Clarifying Lotion 4","Toner","Refreshing Cleanser","Cleanser")
 # result = recall(re_list_name,price_list,skin_type,sensitive_BOOL)
 # print(len(result))
-# print(result)
 
 
 
 
+# 根据搭配的种类长度，同时读多个节点的成份，查看他们的关系是否存在 "work well with"
+# 并记录存在 该功能的成份
 
+def sum_n(n):
+    if n==0:
+        return 0
+    else:
+        s=n+sum_n(n-1)
+    return s
+
+def fun_score_single_type(name,type): # 单个item 关于含有该功能成份的 分数。
+    finally_file = '/Users/zhangyujuan/graduation/finally.json'
+    data = read_json(finally_file)
+    s = 0.0
+    match_string = 'match (n:' + type + '{name:"' + name + '"})-[p:hasIngredient]-(m:Ingredients) ' \
+                                                                    'with m match (m)-[r:haseffect]' \
+                                                                    '-(a:Function{name:"' + func + '"}) ' \
+                                                                                                   'return m.name'
+    # print(match_string)
+    a = list(graph.run(match_string))
+    # print(a)
+    for i in range(len(a)):
+        # print(i,a[i],a[i]["m.name"])
+        ingredient_length = len(data[name]["ingredients"])
+        m_index = (data[name]["ingredients"].index(a[i]["m.name"]) )+ 1
+        tmp = float((ingredient_length - m_index) / sum_n(ingredient_length))
+        s = s + tmp
+        # print("a[i]['m.name'] :",a[i]["m.name"])
+        # print("score : ", score)
+        # print("m_index : ", m_index)
+        # print(ingredient_length)
+    print(name, s)
+    return s
+
+def pick_from_recall(one_list, one_list_length): #  求当前搭配list的总分数
+    score = 0.0
+
+    if one_list_length == 1:
+        a_type = re_list_name[0]
+        score = fun_score_single_type(one_list[0],a_type)
+    if one_list_length == 2:
+        a_type = re_list_name[0]
+        b_type = re_list_name[1]
+        # print("type : ", a_type,b_type)
+        # print("name: ", )
+        # a = fun_score_single_type(one_list[0], a_type)
+        # b = fun_score_single_type(one_list[1], b_type)
+        # print("a : ", a)
+        # print("b : ", b)
+        # score = a+b
+        score = fun_score_single_type(one_list[0], a_type) + fun_score_single_type(one_list[1], b_type)
+
+    if one_list_length == 3:
+        a_type = re_list_name[0]
+        b_type = re_list_name[1]
+        c_type = re_list_name[2]
+        score = fun_score_single_type(one_list[0], a_type) + \
+                fun_score_single_type(one_list[1], b_type) + \
+                fun_score_single_type(one_list[2], c_type)
+    if one_list_length == 4:
+        a_type = re_list_name[0]
+        b_type = re_list_name[1]
+        c_type = re_list_name[2]
+        d_type = re_list_name[3]
+        score = fun_score_single_type(one_list[0], a_type) + \
+                fun_score_single_type(one_list[1], b_type) + \
+                fun_score_single_type(one_list[2], c_type) + \
+                fun_score_single_type(one_list[3], d_type)
+    if one_list_length == 4:
+        a_type = re_list_name[0]
+        b_type = re_list_name[1]
+        c_type = re_list_name[2]
+        d_type = re_list_name[3]
+        e_type = re_list_name[4]
+        score = fun_score_single_type(one_list[0], a_type) + \
+                fun_score_single_type(one_list[1], b_type) + \
+                fun_score_single_type(one_list[2], c_type) + \
+                fun_score_single_type(one_list[3], d_type) + \
+                fun_score_single_type(one_list[4], e_type)
+    if one_list_length == 6:
+        a_type = re_list_name[0]
+        b_type = re_list_name[1]
+        c_type = re_list_name[2]
+        d_type = re_list_name[3]
+        e_type = re_list_name[4]
+        f_type = re_list_name[5]
+        score = fun_score_single_type(one_list[0], a_type) + \
+                fun_score_single_type(one_list[1], b_type) + \
+                fun_score_single_type(one_list[2], c_type) + \
+                fun_score_single_type(one_list[3], d_type) + \
+                fun_score_single_type(one_list[4], e_type) + \
+                fun_score_single_type(one_list[5], f_type)
+    return score
+
+
+# one_list = ["Truth Juice Daily Cleanser","Glycolic Acid Exfoliating Toner","High Performance Vitamin C Facial Serum"]
+# score = pick_from_recall(one_list, len(one_list))
+# print("final score : ", score)
+
+# score_result_dict = {0:1.11,1:3.22,2:2.22}
+# b = sorted(score_result_dict.items(), key=lambda item: item[1], reverse=True)
+# print(b)
+
+def sort_from_score(all_list):
+    score_result_dict = {} # all_list下标作为 key，分数作为value
+    for i in range(len(all_list)):
+        score = pick_from_recall(all_list[i],len(all_list[i]))
+        score_result_dict[i]=score
+    # score_result_dict = {0: 1.11, 1: 0.22, 2: 2.22,3:5.55}
+    sort_list = sorted(score_result_dict.items(), key=lambda item: item[1], reverse=True) # 按value排序
+    print(sort_list)
+    if len(sort_list)>3:
+        result = sort_list[:3]
+    else:
+        result = sort_list
+    return result
+
+result = recall(re_list_name,price_list,skin_type,sensitive_BOOL)
+final = sort_from_score(result)
+print(final)
